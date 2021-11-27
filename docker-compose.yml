@@ -1,0 +1,32 @@
+# docker-compose build
+# docker-compose up -d
+version: '3'
+
+# TODO: access external full-text-rss!
+
+services:
+  docker_redis:
+    build: redis
+    container_name: redis
+    image: redis
+    restart: unless-stopped
+    volumes:
+      - redis:/data
+
+  app:
+    container_name: hn_feeds
+    build: .
+    restart: unless-stopped
+    ports:
+      - 5000:5000
+    env_file:
+      - ./.env
+    depends_on:
+      - docker_redis
+    volumes:
+      - ./logging:/app/logging
+    extra_hosts:
+      - "rss_feed_host:host-gateway"
+
+volumes:
+  redis:

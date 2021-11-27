@@ -1,0 +1,8 @@
+random_user_agent
+feedgen
+feedparser
+flask
+python-dotenv
+readability-lxml
+requests
+redis
