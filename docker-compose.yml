@@ -12,7 +12,9 @@ services:
     restart: unless-stopped
     volumes:
       - redis:/data
-
+    networks:
+      - hn-feeds
+      
   app:
     container_name: hn-feeds
     build: .
