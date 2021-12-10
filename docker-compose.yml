@@ -14,7 +14,7 @@ services:
       - redis:/data
 
   app:
-    container_name: hn_feeds
+    container_name: hn-feeds
     build: .
     restart: unless-stopped
     ports:
@@ -25,6 +25,12 @@ services:
       - docker_redis
     extra_hosts:
       - "rss_feed_host:host-gateway"
+    networks:
+      - hn-feeds
 
 volumes:
   redis:
+
+networks:
+  hn-feeds:
+    name: hn-feeds
