@@ -23,8 +23,6 @@ services:
       - ./.env
     depends_on:
       - docker_redis
-    volumes:
-      - ./logging:/app/logging
     extra_hosts:
       - "rss_feed_host:host-gateway"
 
