@@ -18,7 +18,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - 5000:5000
+      - 8254:5000
     env_file:
       - ./.env
     depends_on:
