@@ -8,7 +8,7 @@ It also includes redis for caching.
 ## Setup
 
 Copy `.env-dist` to `.env` and change the configuration.
-Most of the times it's just about `FLASK_PORT`, `FULLTEXT_RSS_URL`, and `LOG_PATH`.
+Most of the times it's just about `FULLTEXT_RSS_URL` and `LOG_LEVEL`.
 
 Start the service with:
 
