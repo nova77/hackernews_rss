@@ -6,7 +6,6 @@ from random_user_agent.user_agent import UserAgent
 from random_user_agent.params import SoftwareName, OperatingSystem
 
 import feedparser
-import logging
 import pickle
 import re
 import urllib.parse
@@ -15,6 +14,10 @@ import readability
 import requests
 import redis
 import threading
+import logger_config
+
+logger = logger_config.get_logger()
+
 
 redis_mutex = threading.Lock()
 
@@ -107,16 +110,25 @@ class HNFeedsGenerator:
     self._redis_client = redis_client
     self._redis_expire_secs = redis_expire_secs
     self._fulltext_rss_url = fulltext_rss_url
+    logger.info('Getting agent rotator..')
     self._user_agent_rotator = self._get_user_agent_rotator()
 
     if self._fulltext_rss_url:
       # Make sure it ends with a slash otherwise urljoin will not work as
       # expected.
+      logger.info(f'[FULLTEXT RSS]: Testing {self._fulltext_rss_url}..')
       if not self._fulltext_rss_url.endswith('/'):
         self._fulltext_rss_url += '/'
+      response = requests.get(self._fulltext_rss_url)
+      if response.status_code == 200:
+        logger.info(f'[FULLTEXT RSS]: Connected!')
+      else:
+        logger.error('Failure to connect to full-text RSS feed: %s',
+                     response.status_code)
+        self._fulltext_rss_url = None
     else:
-      logging.warning('[FULLTEXT_RSS]: No URL provided. Will only use the '
-                      'internal [READABILITY]')
+      logger.warning('[FULLTEXT_RSS]: No URL provided. Will only use the '
+                     'internal [READABILITY]')
 
   def _get_user_agent_rotator(self) -> UserAgent:
     software_names = [SoftwareName.CHROME.value]
@@ -145,10 +157,10 @@ class HNFeedsGenerator:
     try:
       response = requests.get(path)
     except requests.RequestException as e:
-      logging.error(f'[FULLTEXT_RSS]: Failed to get {path}: {e}')
+      logger.error(f'[FULLTEXT_RSS]: Failed to get {path}: {e}')
       return None
     if response.status_code != 200:
-      logging.error(f'[FULLTEXT_RSS]: Failed to get {path}: '
+      logger.error(f'[FULLTEXT_RSS]: Failed to get {path}: '
                     f'got code {response.status_code}')
       return None
 
@@ -162,7 +174,7 @@ class HNFeedsGenerator:
     fg_entry.title(fp_entry.title)
     fg_entry.content(fp_entry.description, type='html')
 
-    logging.info(f'[FULLTEXT_RSS]: {url}')
+    logger.info(f'[FULLTEXT_RSS]: {url}')
     return fg_entry
 
   def _feed_from_readability(self, url: str) -> Optional[FeedEntry]:
@@ -174,11 +186,11 @@ class HNFeedsGenerator:
                               timeout=self._timeout_secs,
                               cookies=_get_cookies(url))
     except requests.exceptions.Timeout:
-      logging.warning(f'[TIMEOUT]: {url}')
+      logger.warning(f'[TIMEOUT]: {url}')
       return None
 
     if not response.ok:
-      logging.error(f'[BAD RESPONSE {response.status_code}]: {url}')
+      logger.error(f'[BAD RESPONSE {response.status_code}]: {url}')
       return None
     doc = readability.Document(response.content)
     if _robot_check(doc):
@@ -187,7 +199,7 @@ class HNFeedsGenerator:
     fg_entry = FeedEntry()
     fg_entry.title(doc.title())
     fg_entry.content(doc.summary(html_partial=True), type='html')
-    logging.info(f'[READABILITY]: {url}')
+    logger.info(f'[READABILITY]: {url}')
     return fg_entry
 
   def _feed_as_it_is(self,
@@ -206,7 +218,7 @@ class HNFeedsGenerator:
     fg_entry.content(fp_entry.description, type='html')
     fg_entry.author({'name': urllib.parse.urlparse(fp_entry.link).netloc})
 
-    logging.info(f'[NO_CHANGE]: {fp_entry.link}')
+    logger.info(f'[NO_CHANGE]: {fp_entry.link}')
     return fg_entry
 
   def _create_feedgenerator_entry(
@@ -266,7 +278,7 @@ class HNFeedsGenerator:
         pickled_fe = self._redis_client.get(name=redis_key)
 
       if pickled_fe:
-        logging.info(f'[CACHED]: {url}')
+        logger.info(f'[CACHED]: {url}')
         fg_entry = pickle.loads(pickled_fe)
       else:
         fg_entry = self._create_feedgenerator_entry(fp_entry)
@@ -276,7 +288,7 @@ class HNFeedsGenerator:
               value=pickle.dumps(fg_entry, protocol=pickle.HIGHEST_PROTOCOL),
               ex=self._redis_expire_secs)
     except Exception as e:
-      logging.error(f'[ERROR] {e}: {url}')
+      logger.error(f'[ERROR] {e}: {url}')
       return None
 
     return fg_entry
@@ -293,7 +305,7 @@ class HNFeedsGenerator:
     if not feed.entries:
       return None
 
-    logging.info(f'Fetching {len(feed.entries)} feeds '
+    logger.info(f'Fetching {len(feed.entries)} feeds '
                  f'with {self._max_workers} workers..')
 
     num_added = 0
@@ -313,5 +325,5 @@ class HNFeedsGenerator:
         except Exception:
           pass
 
-    logging.info(f'Got {num_added} feeds for "{base_rss}".')
+    logger.info(f'Got {num_added} feeds for "{base_rss}".')
     return fg

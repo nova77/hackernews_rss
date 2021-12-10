@@ -12,7 +12,7 @@ import logger_config
 
 app = Flask(__name__)
 
-logging.config.dictConfig(logger_config.get_config())
+logger = logger_config.get_logger()
 
 
 @functools.lru_cache(None)
@@ -23,10 +23,10 @@ def _get_feed_generator():
     redis_db = os.environ.get("REDIS_DB", 0)
     redis_client = redis.Redis(host=host, port=int(port), db=redis_db)
     redis_client.ping()  # test connection
-    logging.info(f"Connected to Redis at {host}:{port}")
+    logger.info(f"Connected to Redis at {host}:{port}")
   else:
     redis_client = None
-    logging.warning("Not using Redis")
+    logger.warning("Not using Redis")
 
   return hn_feeds.HNFeedsGenerator(
       timeout_secs=int(os.environ.get("TIMEOUT_SECS", 5)),
@@ -34,6 +34,9 @@ def _get_feed_generator():
       redis_client=redis_client,
       redis_expire_secs=int(os.environ.get("REDIS_EXPIRE_SECS", 172800)),
       fulltext_rss_url=os.environ.get("FULLTEXT_RSS_URL", None))
+
+# global feed generator
+_feed_generator = _get_feed_generator()
 
 
 @app.route('/')
@@ -51,11 +54,12 @@ def no_favicon():
 def main_entry(url):
   del url  # Unused since we need full path anyway.
   full_path = request.full_path[1:]  # Strip leading /.
-
-  feed_generator = _get_feed_generator()
   base_rss = f'http://{full_path}'
-  logging.info(f'Got request for "{base_rss}". Creating feed.')
-  fg = feed_generator.create_feed(base_rss=base_rss)
+  
+  logger.info(f'Got request for "{base_rss}". Creating feed.')
+
+
+  fg = _feed_generator.create_feed(base_rss=base_rss)
   if not fg:
     return '', 404
 
