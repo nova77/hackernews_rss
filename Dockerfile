@@ -12,4 +12,4 @@ COPY app /app
 
 ENTRYPOINT [ "flask" ]
 
-CMD ["run", "-h", "0.0.0.0", "-p", "5000"]
+CMD ["run", "-h", "0.0.0.0", "-p", "80"]
