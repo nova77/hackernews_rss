@@ -1,7 +1,5 @@
 import os
 import functools
-import logging
-import logging.config
 
 
 from flask import Flask
