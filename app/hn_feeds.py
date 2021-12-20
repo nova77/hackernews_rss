@@ -293,7 +293,7 @@ class HNFeedsGenerator:
         pickled_fe = self._redis_client.get(name=redis_key)
 
       if pickled_fe:
-        logger.info(f'[CACHED]: {url}')
+        logger.debug(f'[CACHED]: {url}')
         fg_entry = pickle.loads(pickled_fe)
       else:
         fg_entry = self._create_feedgenerator_entry(fp_entry)
