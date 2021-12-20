@@ -50,8 +50,9 @@ IGNORED_URLS = [
     ('spectrum.ieee.org', None),  # temporary until "full page reload" is fixed
 ]
 
-# The individual cookies configuration per website, to get around
+# The individual cookies configuration per website, usually to get around
 # "Data Protection Choices".
+# TODO: move this to a file.
 COOKIES_CFG = {
     'npr.org': {
         'trackingChoice': 'true',
@@ -64,8 +65,7 @@ COOKIES_CFG = {
                      '3XWcfPZvcELzhK9Meu_2wxd4u9wNRM5wckx87eJrEso5YzISsG-RMod_'
                      'zl_v3ziX9ohPowEc9qzznZEw6vs2o8JzBAAAgAAA',
         'GUC': 'AQABAQFe_MVfN0IiWQTD',
-        'GUCS': 'AXGZ9Av6',
-
+        'GUCS': 'AXGZ9Av6'
     }
 }
 
@@ -85,6 +85,15 @@ def _robot_check(readability_doc: readability.Document) -> bool:
     return True
   # TODO: add more
   return False
+
+
+def _empty_readability_check(summary: str) -> bool:
+  """Check if the readability summary is actually an empty entry or not."""
+  # It must be smaller than 1k chars, and contain a body tag, which should
+  # not be there as summary should strip it.
+  return (len(summary) > 1000 or
+          not bool(re.match(r'<body[^<]+<\/body>', summary)))
+
 
 
 class HNFeedsGenerator:
@@ -169,6 +178,9 @@ class HNFeedsGenerator:
       return None
 
     fp_entry = feed.entries[0]
+    if '[unable to retrieve full-text content]' in fp_entry.description:
+      return None
+
     fg_entry = FeedEntry()
 
     fg_entry.title(fp_entry.title)
@@ -195,10 +207,13 @@ class HNFeedsGenerator:
     doc = readability.Document(response.content)
     if _robot_check(doc):
       return None  # it's has a robot check
+    summary = doc.summary(html_partial=True)
+    if not _empty_readability_check(summary):
+      return None
 
     fg_entry = FeedEntry()
     fg_entry.title(doc.title())
-    fg_entry.content(doc.summary(html_partial=True), type='html')
+    fg_entry.content(summary, type='html')
     logger.info(f'[READABILITY]: {url}')
     return fg_entry
 
