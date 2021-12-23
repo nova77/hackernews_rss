@@ -28,6 +28,7 @@ redis_mutex = threading.Lock()
 # The websites that will be sent to full-text-rss.
 # Note: some of those require custom site patterns.
 FULL_TEXT_RSS = [
+    'arxiv.org',
     'bbc.co.uk',
     'ai.googleblog.com',
     'github.com',
