@@ -93,8 +93,7 @@ def _empty_readability_check(summary: str) -> bool:
   # It must be smaller than 1k chars, and contain a body tag, which should
   # not be there as summary should strip it.
   return (len(summary) > 1000 or
-          not bool(re.match(r'<body.+<\/body>', summary)))
-
+          not bool(re.match(r'<body.+</body>', summary, re.MULTILINE | re.DOTALL)))
 
 
 class HNFeedsGenerator:
