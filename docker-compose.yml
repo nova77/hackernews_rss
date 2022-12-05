@@ -27,6 +27,8 @@ services:
       - docker_redis
     extra_hosts:
       - "rss_feed_host:host-gateway"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     networks:
       - hn-feeds
 
