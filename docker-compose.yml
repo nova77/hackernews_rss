@@ -14,7 +14,7 @@ services:
       - redis:/data
     networks:
       - hn-feeds
-      
+
   app:
     container_name: hn-feeds
     build: .
