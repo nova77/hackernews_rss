@@ -1,20 +1,22 @@
-from concurrent import futures
-from feedgen.entry import FeedEntry
-from feedgen.feed import FeedGenerator
-from typing import Dict, Optional
-from random_user_agent.user_agent import UserAgent
-from random_user_agent.params import SoftwareName, OperatingSystem
-
-import feedparser
 import pickle
 import re
+import threading
 import urllib.parse
 
+from concurrent import futures
+from typing import Dict, Optional
+
+import feedparser
+import logger_config
 import readability
 import requests
+
+from feedgen.entry import FeedEntry
+from feedgen.feed import FeedGenerator
+from random_user_agent.params import OperatingSystem, SoftwareName
+from random_user_agent.user_agent import UserAgent
+
 import redis
-import threading
-import logger_config
 
 logger = logger_config.get_logger()
 
@@ -130,7 +132,7 @@ class HNFeedsGenerator:
         self._fulltext_rss_url += '/'
       response = requests.get(self._fulltext_rss_url)
       if response.status_code == 200:
-        logger.info(f'[FULLTEXT RSS]: Connected!')
+        logger.info('[FULLTEXT RSS]: Connected!')
       else:
         logger.error('Failure to connect to full-text RSS feed: %s',
                      response.status_code)

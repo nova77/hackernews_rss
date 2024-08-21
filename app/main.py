@@ -1,12 +1,11 @@
-import os
 import functools
+import os
 
-
-from flask import Flask
-from flask import request
-import redis
 import hn_feeds
 import logger_config
+from flask import Flask, request
+
+import redis
 
 app = Flask(__name__)
 
@@ -39,7 +38,7 @@ _feed_generator = _get_feed_generator()
 
 @app.route('/')
 def base():
-  return f'<p>Must pass an url with a feed to parse!</p>'
+  return '<p>Must pass an url with a feed to parse!</p>'
 
 
 @app.route('/favicon.ico')

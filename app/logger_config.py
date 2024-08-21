@@ -1,6 +1,6 @@
-import sys
 import logging
 import os
+import sys
 
 
 def get_logger():
