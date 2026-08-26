@@ -7,7 +7,7 @@ __pycache__/
 *.so
 
 # Environments
-.venv
+venv
 
 .env
 notebook.ipynb

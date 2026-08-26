@@ -1,16 +1,13 @@
 import pickle
 import re
-import threading
 import urllib.parse
-
 from concurrent import futures
-from typing import Dict, Optional
+from typing import cast
 
 import feedparser
 import logger_config
 import readability
 import requests
-
 from feedgen.entry import FeedEntry
 from feedgen.feed import FeedGenerator
 from random_user_agent.params import OperatingSystem, SoftwareName
@@ -21,8 +18,6 @@ import redis
 logger = logger_config.get_logger()
 
 
-redis_mutex = threading.Lock()
-
 ################################################################################
 # Site configs
 # TODO: move them to a config file.
@@ -30,52 +25,52 @@ redis_mutex = threading.Lock()
 # The websites that will be sent to full-text-rss.
 # Note: some of those require custom site patterns.
 FULL_TEXT_RSS = [
-    'arxiv.org',
-    'bbc.co.uk',
-    'ai.googleblog.com',
-    'github.com',
-    'nature.com',
-    'newyorker.com',
-    'quantamagazine.org',
-    'techcrunch.com',
-    'theatlantic.com',
-    'thedrive.com',
-    r'wired.co[^/]+',
+  'arxiv.org',
+  'bbc.co.uk',
+  'ai.googleblog.com',
+  'github.com',
+  'nature.com',
+  'newyorker.com',
+  'quantamagazine.org',
+  'techcrunch.com',
+  'theatlantic.com',
+  'thedrive.com',
+  r'wired.co[^/]+',
 ]
 
 # The websites which will NOT be parsed and just returned as they are in
 # the original feed.
 IGNORED_URLS = [
-    # URL and title prefix
-    ('news.ycombinator.com', None),
-    ('youtube.com', 'YT'),
-    ('twitter.com', 'twit'),
-    ('spectrum.ieee.org', None),  # temporary until "full page reload" is fixed
+  # URL and title prefix
+  ('news.ycombinator.com', None),
+  ('youtube.com', 'YT'),
+  ('twitter.com', 'twit'),
+  ('spectrum.ieee.org', None),  # temporary until "full page reload" is fixed
 ]
 
 # The individual cookies configuration per website, usually to get around
 # "Data Protection Choices".
 # TODO: move this to a file.
 COOKIES_CFG = {
-    'npr.org': {
-        'trackingChoice': 'true',
-        'choiceVersion': '1',
-        'dateOfChoice': '1596844800021'
-    },
-    # TODO: This is a temporary solution, as it doesn't always work.
-    'techcrunch.com': {
-        'EuConsent': 'BOsb5w6O4A6WNAOABCENCuuAAAAuJ6__f_97_8_v2fdvduz_Ov_j_c__'
-                     '3XWcfPZvcELzhK9Meu_2wxd4u9wNRM5wckx87eJrEso5YzISsG-RMod_'
-                     'zl_v3ziX9ohPowEc9qzznZEw6vs2o8JzBAAAgAAA',
-        'GUC': 'AQABAQFe_MVfN0IiWQTD',
-        'GUCS': 'AXGZ9Av6'
-    }
+  'npr.org': {
+    'trackingChoice': 'true',
+    'choiceVersion': '1',
+    'dateOfChoice': '1596844800021',
+  },
+  # TODO: This is a temporary solution, as it doesn't always work.
+  'techcrunch.com': {
+    'EuConsent': 'BOsb5w6O4A6WNAOABCENCuuAAAAuJ6__f_97_8_v2fdvduz_Ov_j_c__'
+    '3XWcfPZvcELzhK9Meu_2wxd4u9wNRM5wckx87eJrEso5YzISsG-RMod_'
+    'zl_v3ziX9ohPowEc9qzznZEw6vs2o8JzBAAAgAAA',
+    'GUC': 'AQABAQFe_MVfN0IiWQTD',
+    'GUCS': 'AXGZ9Av6',
+  },
 }
 
 ################################################################################
 
 
-def _get_cookies(url: str) -> Dict[str, str]:
+def _get_cookies(url: str) -> dict[str, str] | None:
   """Returns the specific cookies per site, if available."""
   for key, cookies in COOKIES_CFG.items():
     if key in url:
@@ -84,30 +79,32 @@ def _get_cookies(url: str) -> Dict[str, str]:
 
 def _robot_check(readability_doc: readability.Document) -> bool:
   """Checks if the readability document returned a robot check entry."""
-  if 'Are you a robot?' in readability_doc.title():
-    return True
   # TODO: add more
-  return False
+  return 'Are you a robot?' in readability_doc.title()
 
 
 def _empty_readability_check(summary: str) -> bool:
   """Check if the readability summary is actually an empty entry or not."""
   # It must be smaller than 1k chars, and contain a body tag, which should
   # not be there as summary should strip it.
-  return (len(summary) > 1000 or
-          not bool(re.match(r'<body.+</body>', summary, re.MULTILINE | re.DOTALL)))
+  return len(summary) > 1000 or not bool(
+    re.match(r'<body.+</body>', summary, re.MULTILINE | re.DOTALL)
+  )
 
 
 class HNFeedsGenerator:
   """Creates the RSS feeds."""
 
-  def __init__(self, timeout_secs: int = 5,
-               max_workers: int = 30,
-               redis_client: Optional[redis.Redis] = None,
-               redis_expire_secs: int = 60 * 60 * 24 * 2,
-               fulltext_rss_url: Optional[str] = None):
+  def __init__(
+    self,
+    timeout_secs: int = 5,
+    max_workers: int = 30,
+    redis_client: redis.Redis | None = None,
+    redis_expire_secs: int = 60 * 60 * 24 * 2,
+    fulltext_rss_url: str | None = None,
+  ):
     """Initializes the FeedsCreator.
-    
+
     Args:
       timeout_secs: The timeout in seconds for the requests.
       max_workers: The maximum number of concurrent workers to use.
@@ -134,36 +131,41 @@ class HNFeedsGenerator:
       if response.status_code == 200:
         logger.info('[FULLTEXT RSS]: Connected!')
       else:
-        logger.error('Failure to connect to full-text RSS feed: %s',
-                     response.status_code)
+        logger.error(
+          'Failure to connect to full-text RSS feed: %s', response.status_code
+        )
         self._fulltext_rss_url = None
     else:
-      logger.warning('[FULLTEXT_RSS]: No URL provided. Will only use the '
-                     'internal [READABILITY]')
+      logger.warning(
+        '[FULLTEXT_RSS]: No URL provided. Will only use the internal [READABILITY]'
+      )
 
   def _get_user_agent_rotator(self) -> UserAgent:
     software_names = [SoftwareName.CHROME.value]
-    operating_systems = [OperatingSystem.WINDOWS.value,
-                         OperatingSystem.LINUX.value,
-                         OperatingSystem.MAC.value]
-    return UserAgent(software_names=software_names,
-                     operating_systems=operating_systems)
+    operating_systems = [
+      OperatingSystem.WINDOWS.value,
+      OperatingSystem.LINUX.value,
+      OperatingSystem.MAC.value,
+    ]
+    return UserAgent(software_names=software_names, operating_systems=operating_systems)
 
-  def _feed_from_fulltext_rss(self, url: str) -> Optional[FeedEntry]:
+  def _feed_from_fulltext_rss(self, url: str) -> FeedEntry | None:
     """Get the feed entry by parsing with Full text RSS.
-    
+
     Full text RSS can work better than readability, as it is based on patterns
     provided by the community.
 
     Args:
       url: The url of the article.
     Returns:
-      The feed parsed using full text RSS. 
+      The feed parsed using full text RSS.
     """
     quoted_url = urllib.parse.quote(url, safe='')
+    assert self._fulltext_rss_url, 'Full text RSS URL is not set.'
     path = urllib.parse.urljoin(
-        self._fulltext_rss_url,
-        f'makefulltextfeed.php?url={quoted_url}&links=preserve')
+      self._fulltext_rss_url,
+      f'makefulltextfeed.php?url={quoted_url}&links=preserve',
+    )
 
     try:
       response = requests.get(path)
@@ -171,8 +173,9 @@ class HNFeedsGenerator:
       logger.error(f'[FULLTEXT_RSS]: Failed to get {path}: {e}')
       return None
     if response.status_code != 200:
-      logger.error(f'[FULLTEXT_RSS]: Failed to get {path}: '
-                    f'got code {response.status_code}')
+      logger.error(
+        f'[FULLTEXT_RSS]: Failed to get {path}: got code {response.status_code}'
+      )
       return None
 
     feed = feedparser.parse(response.content)
@@ -191,14 +194,17 @@ class HNFeedsGenerator:
     logger.info(f'[FULLTEXT_RSS]: {url}')
     return fg_entry
 
-  def _feed_from_readability(self, url: str) -> Optional[FeedEntry]:
+  def _feed_from_readability(self, url: str) -> FeedEntry | None:
     """Get the feed entry by parsing the url with python readability."""
     ua = self._user_agent_rotator.get_random_user_agent()
     header = {'User-Agent': str(ua)}
     try:
-      response = requests.get(url, headers=header,
-                              timeout=self._timeout_secs,
-                              cookies=_get_cookies(url))
+      response = requests.get(
+        url,
+        headers=header,
+        timeout=self._timeout_secs,
+        cookies=_get_cookies(url),
+      )
     except requests.exceptions.Timeout:
       logger.warning(f'[TIMEOUT]: {url}')
       return None
@@ -219,9 +225,9 @@ class HNFeedsGenerator:
     logger.info(f'[READABILITY]: {url}')
     return fg_entry
 
-  def _feed_as_it_is(self,
-                     fp_entry: feedparser.FeedParserDict,
-                     title_prefix: Optional[str] = None) -> FeedEntry:
+  def _feed_as_it_is(
+    self, fp_entry: feedparser.FeedParserDict, title_prefix: str | None = None
+  ) -> FeedEntry:
     """Get the feed without any parsing, just copying the original RSS entry."""
     fg_entry = FeedEntry()
     fg_entry.id(fp_entry.link)
@@ -233,15 +239,20 @@ class HNFeedsGenerator:
     fg_entry.title(title)
     fg_entry.published(fp_entry.published)
     fg_entry.content(fp_entry.description, type='html')
-    fg_entry.author({'name': urllib.parse.urlparse(fp_entry.link).netloc})
+    fg_entry.author({'name': urllib.parse.urlparse(str(fp_entry.link)).netloc})
 
     logger.info(f'[NO_CHANGE]: {fp_entry.link}')
     return fg_entry
 
   def _create_feedgenerator_entry(
-          self, fp_entry: feedparser.FeedParserDict) -> Optional[FeedEntry]:
+    self, fp_entry: feedparser.FeedParserDict
+  ) -> FeedEntry | None:
     """Creates a FeedGenerator entry for the given feedparser entry."""
     url = fp_entry.link
+    if not url:
+      return None
+
+    url = cast(str, url)
     if url.endswith('.pdf'):
       # pdfs are returned as they are, with just a pdf prefix added to the
       # title, e.g. '[pdf]: this is my title'
@@ -271,15 +282,21 @@ class HNFeedsGenerator:
     fg_entry.published(fp_entry.published)
     fg_entry.author({'name': urllib.parse.urlparse(url).netloc})
 
+    content = fg_entry.content()
+    if content and 'content' in content:
+      content_val = content['content'] + fp_entry.description
+    else:
+      content_val = fp_entry.description
+
     # Appends the original bit.
-    fg_entry.content(fg_entry.content()[
-        'content'] + fp_entry.description, type='html')
+    fg_entry.content(content_val, type='html')
     return fg_entry
 
   def create_feedgenerator_entry(
-          self, fp_entry: feedparser.FeedParserDict) -> Optional[FeedEntry]:
+    self, fp_entry: feedparser.FeedParserDict
+  ) -> FeedEntry | None:
     """Creates a feed entry or fetch the cached version if available.
-    
+
     Note: this method is thread-safe.
     Args:
       fp_entry: The feedparser entry to augment.
@@ -301,34 +318,39 @@ class HNFeedsGenerator:
         fg_entry = self._create_feedgenerator_entry(fp_entry)
         if fg_entry and self._redis_client:
           self._redis_client.set(
-              name=redis_key,
-              value=pickle.dumps(fg_entry, protocol=pickle.HIGHEST_PROTOCOL),
-              ex=self._redis_expire_secs)
-    except Exception as e:
+            name=redis_key,
+            value=pickle.dumps(fg_entry, protocol=pickle.HIGHEST_PROTOCOL),
+            ex=self._redis_expire_secs,
+          )
+    except Exception as e:  # noqa: BLE001
       logger.error(f'[ERROR] {e}: {url}')
       return None
 
     return fg_entry
 
-  def create_feed(self, base_rss: str) -> Optional[FeedGenerator]:
+  def create_feed(self, base_rss: str) -> FeedGenerator | None:
     """Creates the parsed feed from the base rss feed.
-    
+
     Args:
       base_rss: The base rss feed.
     Returns:
       The feed if successful, None otherwise.
     """
-    feed = feedparser.parse(base_rss)  # type: feedparser.feedParserDict
+    feed: feedparser.FeedParserDict = feedparser.parse(base_rss)
     if not feed.entries:
       return None
 
-    logger.info(f'Fetching {len(feed.entries)} feeds '
-                 f'with {self._max_workers} workers..')
+    logger.info(
+      f'Fetching {len(feed.entries)} feeds with {self._max_workers} workers..'
+    )
 
     num_added = 0
     with futures.ThreadPoolExecutor(max_workers=self._max_workers) as executor:
-      res = executor.map(self.create_feedgenerator_entry, feed.entries,
-                         timeout=self._timeout_secs*1.5)
+      res = executor.map(
+        self.create_feedgenerator_entry,
+        feed.entries,
+        timeout=self._timeout_secs * 1.5,
+      )
       fg = FeedGenerator()
       fg.id(base_rss)
       fg.title('Hacker News (hn_feeds)')
@@ -339,7 +361,7 @@ class HNFeedsGenerator:
             continue
           fg.add_entry(fg_entry)
           num_added += 1
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
           pass
 
     logger.info(f'Got {num_added} feeds for "{base_rss}".')
