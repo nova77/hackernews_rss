@@ -1,0 +1,19 @@
+# The build context is sent to the docker daemon on every build; keep it to
+# what the image actually needs (see the COPY lines in the Dockerfile).
+.git
+.gitignore
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Secrets. Passed in at runtime by docker-compose (env_file), never baked in.
+.env
+.env-dist
+
+# Not part of the app.
+README.md
+LICENSE
+redis/
+app/notebook.ipynb
+app/*_test.py

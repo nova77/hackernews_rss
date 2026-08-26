@@ -212,7 +212,14 @@ class HNFeedsGenerator:
     if not response.ok:
       logger.error(f'[BAD RESPONSE {response.status_code}]: {url}')
       return None
-    doc = readability.Document(response.content)
+    # readability 0.8.4.1 only handles str: its charset regexes are str
+    # patterns, but it feeds them the raw bytes (readability/encoding.py), so
+    # passing response.content raises. Decode here instead, falling back to
+    # sniffing when the server declares no charset, as requests would otherwise
+    # assume latin-1 for text/* and mangle utf-8 pages.
+    if 'charset' not in response.headers.get('Content-Type', '').lower():
+      response.encoding = response.apparent_encoding
+    doc = readability.Document(response.text)
     if _robot_check(doc):
       return None  # it's has a robot check
     summary = doc.summary(html_partial=True)

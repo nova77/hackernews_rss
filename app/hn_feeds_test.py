@@ -56,6 +56,18 @@ def _fg_entry(
   return entry
 
 
+def _response(headers: dict[str, str] | None = None) -> mock.Mock:
+  """Builds an http response stub carrying an already decoded body."""
+  return mock.Mock(
+    ok=True,
+    status_code=200,
+    text='<html/>',
+    encoding='utf-8',
+    apparent_encoding='utf-8',
+    headers=headers or {'Content-Type': 'text/html; charset=utf-8'},
+  )
+
+
 def _make_generator(**kwargs) -> hn_feeds.HNFeedsGenerator:
   """Creates a generator without building a real user agent rotator."""
   with (
@@ -189,7 +201,7 @@ class FeedFromReadabilityTest(unittest.TestCase):
   def _run(self, title='Doc title', summary=None, response=None):
     """Runs the parser with readability and the http response stubbed out."""
     summary = summary if summary is not None else '<div>' + 'a' * 1001 + '</div>'
-    response = response or mock.Mock(ok=True, status_code=200, content=b'<html/>')
+    response = response or _response()
     doc = mock.Mock()
     doc.title.return_value = title
     doc.summary.return_value = summary
@@ -197,9 +209,33 @@ class FeedFromReadabilityTest(unittest.TestCase):
       mock.patch.object(
         hn_feeds.requests, 'get', return_value=response
       ) as self.mock_get,
-      mock.patch.object(hn_feeds.readability, 'Document', return_value=doc),
+      mock.patch.object(
+        hn_feeds.readability, 'Document', return_value=doc
+      ) as self.mock_document,
     ):
       return self.generator._feed_from_readability('https://example.com/a')
+
+  def test_hands_readability_a_decoded_string(self):
+    # readability 0.8.4.1 runs str regexes over whatever it is given, so bytes
+    # raise 'cannot use a string pattern on a bytes-like object' and the entry
+    # is dropped from the feed.
+    self._run()
+    self.assertIsInstance(self.mock_document.call_args.args[0], str)
+
+  def test_sniffs_the_encoding_when_the_server_declares_none(self):
+    # requests assumes latin-1 for a text/* body with no charset, which turns
+    # every non-ascii character of a utf-8 page into mojibake.
+    response = _response(headers={'Content-Type': 'text/html'})
+    response.apparent_encoding = 'utf-8'
+    response.encoding = 'ISO-8859-1'
+    self._run(response=response)
+    self.assertEqual(response.encoding, 'utf-8')
+
+  def test_keeps_the_declared_encoding(self):
+    response = _response(headers={'Content-Type': 'text/html; charset=cp1252'})
+    response.encoding = 'cp1252'
+    self._run(response=response)
+    self.assertEqual(response.encoding, 'cp1252')
 
   def test_returns_the_extracted_article(self):
     entry = self._run(title='Doc title', summary='<div>' + 'a' * 1001 + '</div>')
@@ -229,7 +265,7 @@ class FeedFromReadabilityTest(unittest.TestCase):
     doc = mock.Mock()
     doc.title.return_value = 'Story'
     doc.summary.return_value = '<div>' + 'a' * 1001 + '</div>'
-    response = mock.Mock(ok=True, status_code=200, content=b'<html/>')
+    response = _response()
     with (
       mock.patch.object(
         hn_feeds.requests, 'get', return_value=response
