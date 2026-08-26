@@ -83,11 +83,11 @@ def _robot_check(readability_doc: readability.Document) -> bool:
   return 'Are you a robot?' in readability_doc.title()
 
 
-def _empty_readability_check(summary: str) -> bool:
-  """Check if the readability summary is actually an empty entry or not."""
-  # It must be smaller than 1k chars, and contain a body tag, which should
-  # not be there as summary should strip it.
-  return len(summary) > 1000 or not bool(
+def _is_empty_readability_summary(summary: str) -> bool:
+  """Checks if the readability summary is actually an empty entry."""
+  # It is empty if it is smaller than 1k chars and contains a body tag, which
+  # should not be there as summary should strip it.
+  return len(summary) <= 1000 and bool(
     re.match(r'<body.+</body>', summary, re.MULTILINE | re.DOTALL)
   )
 
@@ -216,7 +216,7 @@ class HNFeedsGenerator:
     if _robot_check(doc):
       return None  # it's has a robot check
     summary = doc.summary(html_partial=True)
-    if not _empty_readability_check(summary):
+    if _is_empty_readability_summary(summary):
       return None
 
     fg_entry = FeedEntry()
